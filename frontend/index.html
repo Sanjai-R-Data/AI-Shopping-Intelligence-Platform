@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BUYWISE AI — Discover Smarter. Compare Deeper. Spend Responsibly.</title>
+  <meta name="description" content="AI-Powered Multilingual Shopping Intelligence & Responsible Checkout Platform." />
+  
+  <!-- Google Fonts: Manrope & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            'burnt-orange': '#E88A38',
+            'charcoal': '#0F172A',
+            'warm-ivory': '#F8F6F0',
+            'muted-lime': '#10B981',
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            heading: ['Manrope', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+</head>
+<body class="min-h-full flex flex-col bg-slate-950 text-slate-100 antialiased selection:bg-burnt-orange selection:text-white">
+
+  <!-- ===================================================================== -->
+  <!-- GLOBAL HEADER & NAVIGATION BAR -->
+  <!-- ===================================================================== -->
+  <header class="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      
+      <!-- Brand Logo -->
+      <a href="#home" class="flex items-center gap-2.5 group">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-burnt-orange to-amber-600 flex items-center justify-center text-white font-black text-lg shadow-md shadow-burnt-orange/20 group-hover:scale-105 transition-transform">
+          B
+        </div>
+        <div class="flex flex-col">
+          <span class="font-heading font-extrabold text-base tracking-tight text-white flex items-center gap-1.5">
+            BUYWISE <span class="text-xs px-1.5 py-0.5 rounded bg-burnt-orange/15 text-burnt-orange font-mono font-bold">AI</span>
+          </span>
+          <span class="text-[10px] text-slate-400 font-medium hidden sm:inline -mt-0.5">Discover. Compare. Spend Responsibly.</span>
+        </div>
+      </a>
+
+      <!-- Desktop Navigation Links -->
+      <nav class="hidden md:flex items-center gap-1.5 bg-slate-900/60 p-1 rounded-xl border border-slate-800/80 text-xs font-semibold">
+        <a href="#home" class="nav-link px-3.5 py-2 rounded-lg transition-colors text-white bg-slate-800/90 border border-slate-700">Home</a>
+        <a href="#explore" class="nav-link px-3.5 py-2 rounded-lg transition-colors text-slate-400 hover:text-white border border-transparent">Explore</a>
+        <a href="#compare" class="nav-link px-3.5 py-2 rounded-lg transition-colors text-slate-400 hover:text-white border border-transparent">Compare</a>
+        <a href="#mandate" class="nav-link px-3.5 py-2 rounded-lg transition-colors text-slate-400 hover:text-white border border-transparent">Spending Mandate</a>
+        <a href="#orders" class="nav-link px-3.5 py-2 rounded-lg transition-colors text-slate-400 hover:text-white border border-transparent">Orders</a>
+      </nav>
+
+      <!-- Right Header Actions (Health Pill, Session ID Badge, Mobile Toggle) -->
+      <div class="flex items-center gap-3">
+        <!-- Live System Status Pill -->
+        <div id="system-health-pill" class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-400">
+          <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
+          <span>Checking...</span>
+        </div>
+
+        <!-- Guest Session Identifier Badge -->
+        <button
+          type="button"
+          id="session-badge"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors text-left"
+          title="Click to reset session"
+        >
+          <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span class="text-xs text-slate-400 font-mono">Guest</span>
+        </button>
+
+        <!-- Mobile Menu Toggle Button -->
+        <button
+          type="button"
+          id="mobile-menu-toggle"
+          class="md:hidden p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+          aria-label="Toggle mobile menu"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Dropdown Navigation Drawer -->
+    <div id="mobile-menu" class="hidden md:hidden border-t border-slate-800 bg-slate-950 px-4 py-3 space-y-1">
+      <a href="#home" class="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-900">Home</a>
+      <a href="#explore" class="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-900">Explore Products</a>
+      <a href="#compare" class="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-900">Product Comparison</a>
+      <a href="#mandate" class="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-900">Spending Mandate</a>
+      <a href="#orders" class="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-900">Purchase History</a>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- MAIN APPLICATION CONTENT CONTAINER -->
+  <!-- ===================================================================== -->
+  <main class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- SECTION 1: HOME PAGE -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="section-home" class="page-section">
+      <!-- Hero Header -->
+      <div class="relative py-12 md:py-20 text-center max-w-4xl mx-auto">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-burnt-orange/10 border border-burnt-orange/20 text-burnt-orange text-xs font-semibold mb-6">
+          <span>⚡</span>
+          <span>AI-Powered Multi-Retailer Product Intelligence</span>
+        </div>
+        <h1 class="text-3xl sm:text-5xl md:text-6xl font-heading font-extrabold text-white tracking-tight leading-tight">
+          Discover smarter.<br class="hidden sm:inline" />
+          Compare deeper.<br class="hidden sm:inline" />
+          <span class="text-transparent bg-clip-text bg-gradient-to-r from-burnt-orange via-amber-400 to-amber-500">Spend responsibly.</span>
+        </h1>
+        <p class="mt-5 text-sm sm:text-base text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          Grounded product discovery, cross-retailer price transparency, and deterministic spending policy guardrails. AI suggests, backend validates, you approve.
+        </p>
+
+        <!-- Search Input Bar -->
+        <div class="mt-8 max-w-2xl mx-auto">
+          <div class="relative flex items-center shadow-2xl shadow-burnt-orange/5 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 focus-within:border-burnt-orange transition-colors">
+            <span class="pl-3.5 pr-2 text-slate-400">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            </span>
+            <input
+              type="text"
+              id="home-search-input"
+              class="w-full bg-transparent border-0 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-0 py-2.5"
+              placeholder="Search products, models, or categories (e.g. noise cancelling headphones, 4K TV)..."
+            />
+            <button
+              type="button"
+              id="home-search-btn"
+              class="px-5 py-2.5 rounded-xl bg-burnt-orange hover:bg-burnt-orange/90 text-white font-semibold text-xs tracking-wide transition-colors shrink-0"
+            >
+              Search
+            </button>
+          </div>
+
+          <!-- Quick Query Example Chips -->
+          <div class="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs">
+            <span class="text-slate-500 font-medium">Try searching:</span>
+            <button type="button" class="js-query-chip px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors" data-query="Headphones">
+              🎧 Headphones
+            </button>
+            <button type="button" class="js-query-chip px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors" data-query="Laptop">
+              💻 Laptop
+            </button>
+            <button type="button" class="js-query-chip px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors" data-query="Watch">
+              ⌚ Smart Watch
+            </button>
+            <button type="button" class="js-query-chip px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors" data-query="Smart TV">
+              📺 4K Smart TV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Featured Categories Grid -->
+      <div class="mt-4 py-8 border-t border-slate-800/80">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-lg font-heading font-bold text-white">Browse by Category</h2>
+          <a href="#explore" class="text-xs font-semibold text-burnt-orange hover:underline">View All Catalog →</a>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          <button type="button" class="js-category-card p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900 transition-all text-center group" data-category="Audio">
+            <div class="text-2xl mb-2 group-hover:scale-110 transition-transform">🎧</div>
+            <div class="text-xs font-bold text-white">Audio</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Headphones & Sound</div>
+          </button>
+          <button type="button" class="js-category-card p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900 transition-all text-center group" data-category="Wearables">
+            <div class="text-2xl mb-2 group-hover:scale-110 transition-transform">⌚</div>
+            <div class="text-xs font-bold text-white">Wearables</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Fitness & Watches</div>
+          </button>
+          <button type="button" class="js-category-card p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900 transition-all text-center group" data-category="Computing">
+            <div class="text-2xl mb-2 group-hover:scale-110 transition-transform">💻</div>
+            <div class="text-xs font-bold text-white">Computing</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Laptops & PCs</div>
+          </button>
+          <button type="button" class="js-category-card p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900 transition-all text-center group" data-category="Electronics">
+            <div class="text-2xl mb-2 group-hover:scale-110 transition-transform">📺</div>
+            <div class="text-xs font-bold text-white">Electronics</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">TVs & Displays</div>
+          </button>
+          <button type="button" class="js-category-card p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900 transition-all text-center group" data-category="Smart Home">
+            <div class="text-2xl mb-2 group-hover:scale-110 transition-transform">🏠</div>
+            <div class="text-xs font-bold text-white">Smart Home</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Security & Hubs</div>
+          </button>
+          <button type="button" class="js-category-card p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900 transition-all text-center group" data-category="Gaming">
+            <div class="text-2xl mb-2 group-hover:scale-110 transition-transform">🎮</div>
+            <div class="text-xs font-bold text-white">Gaming</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Mice & Gear</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Featured Real Catalog Products -->
+      <div class="mt-8 py-8 border-t border-slate-800/80">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-heading font-bold text-white">Featured Seed Catalog Items</h2>
+            <p class="text-xs text-slate-400">Authentic multi-retailer listings with demonstrated price variance</p>
+          </div>
+          <a href="#explore" class="text-xs font-semibold text-burnt-orange hover:underline">Explore All Products →</a>
+        </div>
+        <div id="home-featured-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+
+      <!-- Core Principle / Architecture Cards -->
+      <div class="mt-8 py-8 border-t border-slate-800/80">
+        <h2 class="text-lg font-heading font-bold text-white text-center mb-2">Our Operating Architecture</h2>
+        <p class="text-xs text-slate-400 text-center max-w-lg mx-auto mb-8">
+          Built on a non-negotiable security boundary designed to protect buyers from automated overspending.
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-sm mb-3">1</div>
+            <h3 class="text-sm font-bold text-white mb-1">AI Suggests</h3>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Extracts intent, requirements, and hardware specs from natural language. AI guides discovery but possesses zero financial authority.
+            </p>
+          </div>
+          <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-sm mb-3">2</div>
+            <h3 class="text-sm font-bold text-white mb-1">Backend Validates</h3>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              A deterministic policy engine authoritatively verifies budget limits, price ceilings, and stock availability before checkout can proceed.
+            </p>
+          </div>
+          <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+            <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm mb-3">3</div>
+            <h3 class="text-sm font-bold text-white mb-1">User Approves</h3>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Transparent item breakdowns, currency matching, and explicit buyer confirmation ensure complete user control over every purchase.
+            </p>
+          </div>
+          <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+            <div class="w-8 h-8 rounded-lg bg-burnt-orange/10 text-burnt-orange flex items-center justify-center font-bold text-sm mb-3">4</div>
+            <h3 class="text-sm font-bold text-white mb-1">PayPal Processes</h3>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Orders v2 Sandbox checkout with stable request IDs, decoupled database transactions, and authoritative capture verification.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- SECTION 2: EXPLORE / CATALOGUE PAGE -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="section-explore" class="page-section hidden">
+      <!-- Explore Header -->
+      <div class="mb-6">
+        <h1 class="text-2xl font-heading font-extrabold text-white">Product Catalog & Discovery</h1>
+        <p class="text-xs text-slate-400">Search stored products, filter by taxonomy, and compare multi-retailer price offers.</p>
+      </div>
+
+      <!-- Filter Controls Toolbar -->
+      <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 mb-6">
+        <!-- Search Row -->
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="relative flex-1">
+            <input
+              type="text"
+              id="explore-search-input"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-burnt-orange"
+              placeholder="Search by product name, model, brand, or keywords..."
+            />
+          </div>
+          <button
+            type="button"
+            id="explore-search-btn"
+            class="px-5 py-2.5 rounded-xl bg-burnt-orange hover:bg-burnt-orange/90 text-white font-semibold text-xs tracking-wide transition-colors shrink-0"
+          >
+            Search Catalog
+          </button>
+          <button
+            type="button"
+            id="explore-clear-filters"
+            class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors shrink-0"
+          >
+            Clear Filters
+          </button>
+        </div>
+
+        <!-- Category Filter Pills -->
+        <div id="explore-category-pills" class="flex flex-wrap gap-2 pt-1">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <!-- Facets Row (Brand, Min/Max Price, Source) -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-800/60">
+          <div>
+            <label for="explore-brand-filter" class="block text-[11px] font-semibold text-slate-400 mb-1">Manufacturer Brand</label>
+            <input
+              type="text"
+              id="explore-brand-filter"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-burnt-orange"
+              placeholder="e.g. Sony, Apple, Garmin"
+            />
+          </div>
+          <div>
+            <label for="explore-min-price" class="block text-[11px] font-semibold text-slate-400 mb-1">Min Price ($)</label>
+            <input
+              type="number"
+              id="explore-min-price"
+              min="0"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-burnt-orange"
+              placeholder="0.00"
+            />
+          </div>
+          <div>
+            <label for="explore-max-price" class="block text-[11px] font-semibold text-slate-400 mb-1">Max Price ($)</label>
+            <input
+              type="number"
+              id="explore-max-price"
+              min="0"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-burnt-orange"
+              placeholder="1000.00"
+            />
+          </div>
+          <div>
+            <label for="explore-source-filter" class="block text-[11px] font-semibold text-slate-400 mb-1">Catalog Source</label>
+            <select
+              id="explore-source-filter"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-burnt-orange"
+            >
+              <option value="All">All Sources</option>
+              <option value="synthetic">Synthetic Demo Only</option>
+              <option value="channel3">Live Channel3 Only</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results Count Header -->
+      <div class="flex items-center justify-between mb-4">
+        <div id="explore-results-count" class="text-xs font-semibold text-slate-400">Loading catalog...</div>
+      </div>
+
+      <!-- Products Grid -->
+      <div id="explore-product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <!-- Populated dynamically via JS -->
+      </div>
+
+      <!-- Pagination Container -->
+      <div id="explore-pagination" class="mt-8 flex justify-center">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- SECTION 3: COMPARE PAGE -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="section-compare" class="page-section hidden">
+      <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-heading font-extrabold text-white">Multi-Product Comparison Matrix</h1>
+          <p class="text-xs text-slate-400">Side-by-side technical specification alignment and multi-retailer price variance.</p>
+        </div>
+      </div>
+
+      <div id="compare-content-container">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- SECTION 4: SPENDING MANDATE PAGE -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="section-mandate" class="page-section hidden">
+      <div class="mb-6">
+        <h1 class="text-2xl font-heading font-extrabold text-white">Spending Mandate & Financial Guardrails</h1>
+        <p class="text-xs text-slate-400">Deterministic budget ceilings enforced automatically before any purchase is submitted.</p>
+      </div>
+
+      <!-- Mandate Overview KPI Cards -->
+      <div id="mandate-overview-card">
+        <!-- Populated dynamically via JS -->
+      </div>
+
+      <!-- Grid: Configuration Form & Interactive Pre-Flight Policy Sandbox -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <!-- Form: Configure / Update Mandate -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+          <h2 class="text-base font-bold text-white mb-1">Configure Spending Limits</h2>
+          <p class="text-xs text-slate-400 mb-6">Set your hard financial boundaries. Any purchase exceeding these constraints will be blocked.</p>
+
+          <form id="mandate-config-form" class="space-y-4">
+            <div>
+              <label for="mandate-form-budget" class="block text-xs font-semibold text-slate-300 mb-1">Total Maximum Budget *</label>
+              <input
+                type="number"
+                id="mandate-form-budget"
+                step="0.01"
+                min="1"
+                required
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                placeholder="1000.00"
+              />
+              <span class="text-[10px] text-slate-500 mt-1 block">Upper financial ceiling across all session purchases.</span>
+            </div>
+
+            <div>
+              <label for="mandate-form-item-price" class="block text-xs font-semibold text-slate-300 mb-1">Maximum Single Item Price *</label>
+              <input
+                type="number"
+                id="mandate-form-item-price"
+                step="0.01"
+                min="1"
+                required
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                placeholder="500.00"
+              />
+              <span class="text-[10px] text-slate-500 mt-1 block">Maximum unit price permitted for any single item (cannot exceed total budget).</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label for="mandate-form-quantity" class="block text-xs font-semibold text-slate-300 mb-1">Max Units per Item *</label>
+                <input
+                  type="number"
+                  id="mandate-form-quantity"
+                  min="1"
+                  max="50"
+                  value="1"
+                  required
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                />
+              </div>
+              <div>
+                <label for="mandate-form-currency" class="block text-xs font-semibold text-slate-300 mb-1">Currency *</label>
+                <select
+                  id="mandate-form-currency"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                >
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="INR">INR (₹)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="pt-4">
+              <button
+                type="submit"
+                class="w-full py-2.5 px-4 rounded-xl bg-burnt-orange hover:bg-burnt-orange/90 text-white font-semibold text-xs transition-colors"
+              >
+                Save Mandate Policy
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Interactive Pre-Flight Policy Verification Sandbox -->
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
+          <h2 class="text-base font-bold text-white mb-1">Policy Verification Sandbox</h2>
+          <p class="text-xs text-slate-400 mb-6">Test a prospective purchase against the active policy engine to evaluate deterministically whether it will be approved or blocked.</p>
+
+          <form id="mandate-test-form" class="space-y-4 mb-4">
+            <div>
+              <label for="test-item-name" class="block text-xs font-semibold text-slate-300 mb-1">Item Commercial Name</label>
+              <input
+                type="text"
+                id="test-item-name"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                placeholder="e.g. Sony WH-1000XM5"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label for="test-unit-price" class="block text-xs font-semibold text-slate-300 mb-1">Unit Price *</label>
+                <input
+                  type="number"
+                  id="test-unit-price"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value="349.99"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                />
+              </div>
+              <div>
+                <label for="test-quantity" class="block text-xs font-semibold text-slate-300 mb-1">Qty *</label>
+                <input
+                  type="number"
+                  id="test-quantity"
+                  min="1"
+                  required
+                  value="1"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                />
+              </div>
+              <div>
+                <label for="test-currency" class="block text-xs font-semibold text-slate-300 mb-1">Currency *</label>
+                <select
+                  id="test-currency"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-burnt-orange"
+                >
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                  <option value="INR">INR</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              class="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs transition-colors"
+            >
+              Simulate Policy Decision
+            </button>
+          </form>
+
+          <!-- Result Area -->
+          <div id="test-policy-result" class="mt-auto">
+            <div class="p-4 rounded-xl bg-slate-950/40 border border-slate-800/80 text-xs text-slate-500 text-center">
+              Submit a simulation above to preview the deterministic decision.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- SECTION 5: ORDERS (PURCHASE HISTORY) PAGE -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="section-orders" class="page-section hidden">
+      <div class="mb-6">
+        <h1 class="text-2xl font-heading font-extrabold text-white">Purchase History & Settlement Proof</h1>
+        <p class="text-xs text-slate-400">Persisted payment orders, item snapshots, and verified PayPal Sandbox capture records.</p>
+      </div>
+
+      <div id="orders-content-container">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- FLOATING COMPARISON TRAY -->
+  <!-- ===================================================================== -->
+  <aside
+    id="comparison-floating-tray"
+    aria-label="Product comparison selection"
+    class="fixed bottom-6 right-6 z-30 transform translate-y-24 opacity-0 transition-all duration-300 ease-out"
+  >
+    <div class="flex items-center gap-3 p-3 pl-4 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-md">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-burnt-orange animate-pulse"></span>
+        <span class="text-xs font-bold text-white">
+          <span id="tray-compare-count">0</span> Selected
+        </span>
+      </div>
+      <a
+        href="#compare"
+        class="px-4 py-2 rounded-xl bg-burnt-orange hover:bg-burnt-orange/90 text-white font-semibold text-xs transition-colors shadow-sm"
+      >
+        Compare Matrix →
+      </a>
+      <button
+        type="button"
+        id="tray-clear-compare"
+        class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+        title="Clear comparison list"
+      >
+        ✕
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===================================================================== -->
+  <!-- GLOBAL MODAL BACKDROP & DIALOG -->
+  <!-- ===================================================================== -->
+  <div
+    id="app-modal"
+    class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden"
+  >
+    <div
+      id="modal-content"
+      class="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+    >
+      <!-- Populated dynamically via JS -->
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <!-- ===================================================================== -->
+  <div
+    id="toast-container"
+    class="fixed top-20 right-6 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"
+  >
+    <!-- Injected dynamically via showToast() -->
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- APPLICATION FOOTER -->
+  <!-- ===================================================================== -->
+  <footer class="mt-auto border-t border-slate-800/80 bg-slate-950 py-8 text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div>
+        <span class="font-bold text-slate-400">BUYWISE AI</span> • PayPal AI Hackathon 2026.
+        <span class="block sm:inline text-slate-600 mt-0.5 sm:mt-0">Environment: PayPal Sandbox Only.</span>
+      </div>
+      <div class="flex items-center gap-4 text-slate-500">
+        <span>AI Suggests</span>
+        <span>•</span>
+        <span>Backend Validates</span>
+        <span>•</span>
+        <span>User Approves</span>
+        <span>•</span>
+        <span>PayPal Processes</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Entry Point ES Module -->
+  <script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>
