@@ -4,7 +4,7 @@
  * Full RFC 9457 Problem Details support, typed errors, and clean error messages.
  */
 
-import { CONFIG, setSessionId } from "./config.js";
+import { CONFIG, setSessionId, getSessionId } from "./config.js";
 
 export class APIError extends Error {
   constructor(message, status = 500, detail = null, code = null) {
@@ -107,6 +107,52 @@ export const api = {
     const qs = query.toString();
     return request(`/api/products${qs ? `?${qs}` : ""}`);
   },
+  
+  /**
+   * Live Product Search via Channel3
+   */
+  async searchLiveProducts(query, limit = 10) {
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(limit),
+    });
+
+    return request(`/api/products/search?${params.toString()}`);
+  },
+
+  /**
+   * AI Shopping Assistant — Conversational Query & Recommendations
+   * Dispatches natural language shopping query to the backend Gemini AI orchestrator.
+   * Backend endpoint: POST /api/assistant/query
+   *
+   * @param {string} query - Natural-language query from the user
+   * @param {Array<Object>} [conversationContext=[]] - Bounded previous dialogue [{'role': 'user'|'assistant', 'content': '...'}]
+   * @param {string|null} [sessionId=null] - Optional explicit session ID; defaults to current session from getSessionId()
+   * @returns {Promise<Object>} AssistantQueryResponse matching backend schema
+   */
+  async queryAssistant(query, conversationContext = [], sessionId = null) {
+    if (!query || !query.trim()) {
+      throw new Error("Assistant query text is required.");
+    }
+
+    const sid = sessionId || getSessionId();
+
+    const res = await request("/api/assistant/query", {
+      method: "POST",
+      body: {
+        session_id: sid,
+        query: query.trim(),
+        conversation_context: Array.isArray(conversationContext) ? conversationContext : [],
+      },
+    });
+
+    if (res && res.session_id) {
+      setSessionId(res.session_id);
+    }
+
+    return res;
+  },
+
 
   /**
    * Single Product Specifications & Offers Detail

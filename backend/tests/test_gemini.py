@@ -28,7 +28,12 @@ from backend.app.schemas.assistant import (
     ComparisonExplanation,
     AssistantQueryRequest,
     AssistantQueryResponse,
+    ProductEligibilityItem,
 )
+from backend.app.core.config import get_settings
+from google.genai import types, errors
+from google.genai._api_client import retry_args
+import tenacity
 from backend.app.services.gemini_client import (
     GeminiClient,
     GeminiError,
@@ -49,10 +54,83 @@ from backend.app.services.policy_engine import SpendingPolicyEngine
 def test_gemini_client_init_defaults():
     """Verify GeminiClient initializes with default settings."""
     client = GeminiClient(api_key="test_dummy_key")
-    assert client.model == "gemini-3.8-flash"
+    assert client.model == get_settings().GEMINI_MODEL
     assert client.timeout_seconds == 30.0
     assert client.thinking_level == "medium"
     assert client.is_configured is True
+
+
+def test_gemini_client_retry_options_configuration():
+    """Verify GeminiClient configures HttpRetryOptions with 3 attempts and transient codes [500, 502, 503, 504]."""
+    client = GeminiClient(api_key="test_dummy_key")
+    assert client.is_configured is True
+    http_options = client._client._api_client._http_options
+    assert http_options.retry_options is not None
+    retry_opts = http_options.retry_options
+    assert retry_opts.attempts == 3
+    assert retry_opts.initial_delay == 1.0
+    assert retry_opts.max_delay == 4.0
+    assert retry_opts.exp_base == 2.0
+    assert retry_opts.jitter == 0.5
+    assert retry_opts.http_status_codes == [500, 502, 503, 504]
+
+
+def test_gemini_client_retry_predicate_filters_non_transient_errors():
+    """Verify that only 500, 502, 503, 504 errors trigger retries, and non-transient errors (401, 403, 400, 429) do not."""
+    client = GeminiClient(api_key="test_dummy_key")
+    retry_opts = client._client._api_client._http_options.retry_options
+    r_args = retry_args(retry_opts)
+    pred = r_args["retry"].predicate
+
+    # Non-transient errors: must NOT be retried
+    assert pred(errors.APIError(code=401, response_json={})) is False
+    assert pred(errors.APIError(code=403, response_json={})) is False
+    assert pred(errors.APIError(code=400, response_json={})) is False
+    assert pred(errors.APIError(code=404, response_json={})) is False
+    assert pred(errors.APIError(code=422, response_json={})) is False
+    assert pred(errors.APIError(code=429, response_json={})) is False
+
+    # Transient server errors: MUST be retried
+    assert pred(errors.APIError(code=500, response_json={})) is True
+    assert pred(errors.APIError(code=502, response_json={})) is True
+    assert pred(errors.APIError(code=503, response_json={})) is True
+    assert pred(errors.APIError(code=504, response_json={})) is True
+
+
+def test_gemini_client_tenacity_retry_execution_behavior():
+    """Verify tenacity executes 3 total attempts on 503 and fails fast on attempt 1 for 401."""
+    client = GeminiClient(api_key="test_dummy_key")
+    retry_opts = client._client._api_client._http_options.retry_options
+    fast_opts = types.HttpRetryOptions(
+        attempts=retry_opts.attempts,
+        initial_delay=0.0,
+        max_delay=0.0,
+        exp_base=1.0,
+        jitter=0.0,
+        http_status_codes=retry_opts.http_status_codes,
+    )
+    r_args = retry_args(fast_opts)
+    retryer = tenacity.Retrying(**r_args)
+
+    attempts_401 = 0
+    def fail_401():
+        nonlocal attempts_401
+        attempts_401 += 1
+        raise errors.APIError(code=401, response_json={})
+
+    with pytest.raises(errors.APIError):
+        retryer(fail_401)
+    assert attempts_401 == 1, "401 Unauthorized must fail fast on attempt 1 without retry"
+
+    attempts_503 = 0
+    def fail_503():
+        nonlocal attempts_503
+        attempts_503 += 1
+        raise errors.APIError(code=503, response_json={})
+
+    with pytest.raises(errors.APIError):
+        retryer(fail_503)
+    assert attempts_503 == 3, "503 Unavailable must attempt 3 times (1 initial + 2 retries)"
 
 
 def test_gemini_client_unconfigured_raises_auth_error():
@@ -1396,3 +1474,355 @@ def test_summary_consistency_excluded_not_claimed_qualified():
     assert "none met all your specified requirements" in summary
     assert "Excluded: 1 product(s)" in summary
     assert "Found 1 qualified option(s)" not in summary
+
+
+# =============================================================================
+# CATEGORY L: Specification Extraction and AI Validation Grounding Tests
+# =============================================================================
+
+def test_extract_ram_ddr4_ddr5_lpddr5_and_variants():
+    """Verify RAM extraction recognizes DDR4, DDR5, LPDDR5, key_features, and dedicated keys."""
+    # 1. DDR4 in title
+    p_ddr4 = _build_test_product("p-ddr4", "HP Victus 15.6 Gaming Laptop 16GB DDR4 RAM 512GB SSD", 700.0, "USD")
+    ram, src = AssistantService._extract_ram_from_product(p_ddr4)
+    assert ram == 16.0
+    assert "16gb ddr4 ram" in src.lower()
+
+    # 2. DDR5 in title
+    p_ddr5 = _build_test_product("p-ddr5", "Lenovo LOQ 15.6 Gaming Laptop with 16GB DDR5 RAM 2TB NVMe SSD", 999.0, "USD")
+    ram, src = AssistantService._extract_ram_from_product(p_ddr5)
+    assert ram == 16.0
+    assert "16gb ddr5 ram" in src.lower()
+
+    # 3. LPDDR5 in description
+    p_lpddr5 = _build_test_product("p-lpddr5", "Thin & Light Laptop", 800.0, "USD")
+    p_lpddr5.description = "Configured with 16GB LPDDR5 RAM for efficiency"
+    ram, src = AssistantService._extract_ram_from_product(p_lpddr5)
+    assert ram == 16.0
+    assert "16gb lpddr5 ram" in src.lower()
+
+    # 4. Spaced format "16 GB RAM"
+    p_spaced = _build_test_product("p-spaced", "Standard Laptop 16 GB RAM", 600.0, "USD")
+    ram, src = AssistantService._extract_ram_from_product(p_spaced)
+    assert ram == 16.0
+
+    # 5. key_features bullet points
+    p_kf = _build_test_product("p-kf", "Custom Laptop", 850.0, "USD", specs={"key_features": ["16GB DDR5 RAM", "1TB SSD"]})
+    ram, src = AssistantService._extract_ram_from_product(p_kf)
+    assert ram == 16.0
+    assert "key_features" in src
+
+    # 6. Dedicated spec keys
+    p_spec_int = _build_test_product("p-int", "Office Laptop", 500.0, "USD", specs={"system_memory": 16})
+    ram, src = AssistantService._extract_ram_from_product(p_spec_int)
+    assert ram == 16.0
+    assert "16 GB" in src
+
+    # 7. Unspecified RAM
+    p_none = _build_test_product("p-none", "Generic Laptop", 400.0, "USD", specs={})
+    p_none.description = "No memory listed here"
+    ram, src = AssistantService._extract_ram_from_product(p_none)
+    assert ram is None
+    assert src == "Not specified"
+
+
+def test_extract_storage_2tb_nvme_512gb_and_storage_capacity():
+    """Verify storage extraction recognizes TB/GB, NVMe, key_features, and storage-capacity."""
+    # 1. 2TB NVMe SSD in title
+    p_2tb = _build_test_product("p-2tb", "Lenovo LOQ Laptop 16GB RAM 2TB NVMe SSD", 1200.0, "USD")
+    storage, src = AssistantService._extract_storage_from_product(p_2tb)
+    assert storage == 2048.0
+    assert "2tb" in src.lower()
+
+    # 2. 512GB SSD in title
+    p_512 = _build_test_product("p-512", "HP Victus Laptop 16GB RAM 512GB SSD", 700.0, "USD")
+    storage, src = AssistantService._extract_storage_from_product(p_512)
+    assert storage == 512.0
+    assert "512gb ssd" in src.lower()
+
+    # 3. storage-capacity key
+    p_sc = _build_test_product("p-sc", "Pro Laptop", 1000.0, "USD", specs={"storage-capacity": "2TB NVMe SSD"})
+    storage, src = AssistantService._extract_storage_from_product(p_sc)
+    assert storage == 2048.0
+    assert "storage-capacity" in src
+
+    # 4. key_features bullet list
+    p_kf = _build_test_product("p-kf", "Feature Laptop", 900.0, "USD", specs={"key_features": ["16GB DDR5 RAM", "512GB PCIe NVMe SSD"]})
+    storage, src = AssistantService._extract_storage_from_product(p_kf)
+    assert storage == 512.0
+    assert "key_features" in src
+
+    # 5. Missing storage
+    p_none = _build_test_product("p-none", "Empty Laptop", 300.0, "USD", specs={})
+    p_none.description = "No storage mentioned"
+    storage, src = AssistantService._extract_storage_from_product(p_none)
+    assert storage is None
+    assert src == "Not specified"
+
+
+def test_ai_intelligence_sanitizes_unverified_ram_claim():
+    """Verify unsupported RAM claims are removed from strengths while preserving legitimate strengths."""
+    elig_unverified = ProductEligibilityItem(
+        product_id="prod-victus",
+        product_name="HP Victus 15.6",
+        status="UNVERIFIED_SPECS",
+        is_qualified=False,
+        reasons=["RAM specification is missing from product details; cannot confirm requirement of 16 GB."],
+        verified_specs={},
+        unverified_specs=["ram"],
+    )
+
+    ai_intel = ProductIntelligence(
+        product_id="prod-victus",
+        product_name="HP Victus 15.6",
+        suitability="Highly Suitable",
+        strengths=[
+            "16 GB RAM meets your requirement",
+            "Equipped with AMD Ryzen 5 processor",
+            "NVIDIA GeForce RTX 3050 GPU with 4GB GDDR6",
+            "High-refresh 144Hz FHD display",
+        ],
+        weaknesses=["Chassis is predominantly plastic"],
+        intended_use_advantages=[
+            "16GB RAM for machine learning models",
+            "Dedicated RTX 3050 graphics for parallel workloads",
+        ],
+        missing_information=[],
+        recommendation_rationale="Great option featuring 16GB RAM meets requirements.",
+    )
+
+    sanitized = AssistantService.validate_and_sanitize_intelligence(
+        [ai_intel],
+        {"prod-victus": elig_unverified},
+    )[0]
+
+    # Unsupported RAM claims stripped
+    assert "16 GB RAM meets your requirement" not in sanitized.strengths
+    assert "16GB RAM for machine learning models" not in sanitized.intended_use_advantages
+
+    # Legitimate non-RAM strengths preserved
+    assert "Equipped with AMD Ryzen 5 processor" in sanitized.strengths
+    assert "NVIDIA GeForce RTX 3050 GPU with 4GB GDDR6" in sanitized.strengths
+    assert "High-refresh 144Hz FHD display" in sanitized.strengths
+    assert "Dedicated RTX 3050 graphics for parallel workloads" in sanitized.intended_use_advantages
+
+    # Missing information cataloged
+    assert any("RAM" in m for m in sanitized.missing_information)
+
+    # Suitability aligned to conditional, not falsely qualified
+    assert "Conditionally Suitable" in sanitized.suitability
+
+
+def test_ai_intelligence_sanitizes_unverified_storage_claim():
+    """Verify unsupported storage claims are stripped when storage is unverified."""
+    elig_unverified = ProductEligibilityItem(
+        product_id="prod-storage",
+        product_name="Sample Laptop",
+        status="UNVERIFIED_SPECS",
+        is_qualified=False,
+        reasons=["Storage specification is unverified (512 GB)."],
+        verified_specs={"ram": "16 GB"},
+        unverified_specs=["storage"],
+    )
+
+    ai_intel = ProductIntelligence(
+        product_id="prod-storage",
+        product_name="Sample Laptop",
+        suitability="Suitable",
+        strengths=[
+            "16 GB RAM meets requirement",
+            "2TB NVMe SSD provides ample storage capacity",
+            "Lightweight aluminum body",
+        ],
+        weaknesses=[],
+        intended_use_advantages=["Ample storage for local dataset caches"],
+        missing_information=[],
+        recommendation_rationale="Solid laptop.",
+    )
+
+    sanitized = AssistantService.validate_and_sanitize_intelligence(
+        [ai_intel],
+        {"prod-storage": elig_unverified},
+    )[0]
+
+    # Storage claim stripped
+    assert not any("2tb" in s.lower() or "storage" in s.lower() for s in sanitized.strengths)
+    assert not any("storage" in a.lower() for a in sanitized.intended_use_advantages)
+
+    # Legitimate verified RAM and body strength preserved
+    assert "16 GB RAM meets requirement" in sanitized.strengths
+    assert "Lightweight aluminum body" in sanitized.strengths
+    assert any("storage" in m.lower() or "ssd" in m.lower() for m in sanitized.missing_information)
+
+
+def test_unsupported_ai_strengths_cannot_override_deterministic_eligibility():
+    """
+    CRITICAL SECURITY & INTEGRITY INVARIANT:
+    Prove that AI-generated intelligence cannot override deterministic eligibility verdicts.
+    """
+    from backend.app.schemas.assistant import SpecificationRequirement
+
+    # User requires 16GB RAM
+    intent = ShoppingIntent(
+        query="gaming laptop with at least 16GB RAM",
+        category="laptop",
+        required_specs=[SpecificationRequirement(name="ram", value="16 GB", min_value=16.0, unit="GB")],
+    )
+
+    # Product in store has no RAM specified
+    product = _build_test_product("prod-mystery", "Mystery Book", 800.0, "USD", specs={})
+    product.description = "A powerful laptop for everyday tasks"
+
+    # Step 1: Deterministic evaluation is authoritative
+    elig = AssistantService.evaluate_product_eligibility(product, intent)
+    assert elig.is_qualified is False
+    assert elig.status == "UNVERIFIED_SPECS"
+    assert "ram" in elig.unverified_specs
+
+    # Step 2: Simulate Gemini hallucinating that the product is fully qualified with 16GB RAM
+    hallucinated_intel = ProductIntelligence(
+        product_id="prod-mystery",
+        product_name="Mystery Book",
+        suitability="Highly Suitable - Meets All Requirements",
+        strengths=["16 GB RAM meets your requirement", "Sleek keyboard", "Long battery life"],
+        weaknesses=[],
+        intended_use_advantages=["16GB RAM handles all workloads"],
+        missing_information=[],
+        recommendation_rationale="Buy this laptop because it has 16GB RAM.",
+    )
+
+    # Step 3: Run backend sanitization layer
+    elig_map = {elig.product_id: elig}
+    sanitized_list = AssistantService.validate_and_sanitize_intelligence([hallucinated_intel], elig_map)
+    sanitized = sanitized_list[0]
+
+    # Invariant A: Deterministic eligibility remains UNVERIFIED and NOT qualified
+    assert elig.is_qualified is False
+    assert elig.status == "UNVERIFIED_SPECS"
+
+    # Invariant B: AI's contradictory claim was scrubbed from strengths and advantages
+    assert "16 GB RAM meets your requirement" not in sanitized.strengths
+    assert "16GB RAM handles all workloads" not in sanitized.intended_use_advantages
+
+    # Invariant C: Genuine non-spec strengths are preserved
+    assert "Sleek keyboard" in sanitized.strengths
+    assert "Long battery life" in sanitized.strengths
+
+    # Invariant D: Transparency guaranteed in missing_information
+    assert any("RAM" in m for m in sanitized.missing_information)
+
+    # Invariant E: Suitability is adjusted to prevent misleading user
+    assert "Conditionally Suitable" in sanitized.suitability
+
+
+def test_gemini_client_analyze_products_includes_eligibility_map():
+    """Verify GeminiClient.analyze_products passes deterministic eligibility info to prompt evidence."""
+    client = GeminiClient(api_key="test_key")
+    intent = ShoppingIntent(query="laptop", category="laptop")
+    products = [{"id": "prod-1", "name": "Test Laptop", "lowest_price": 999.0, "offers": []}]
+
+    elig_map = {
+        "prod-1": ProductEligibilityItem(
+            product_id="prod-1",
+            product_name="Test Laptop",
+            status="UNVERIFIED_SPECS",
+            is_qualified=False,
+            reasons=["RAM specification is missing."],
+            verified_specs={},
+            unverified_specs=["ram"],
+        )
+    }
+
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
+        "items": [
+            {
+                "product_id": "prod-1",
+                "product_name": "Test Laptop",
+                "suitability": "GOOD",
+                "strengths": ["Fast CPU"],
+                "weaknesses": [],
+                "intended_use_fit": "General use",
+                "missing_information": ["RAM"],
+                "value_for_money_rating": 4.0,
+                "recommendation_rationale": "Check RAM before buying",
+            }
+        ]
+    })
+
+    with patch.object(client._client.models, "generate_content", return_value=mock_response) as mock_gen:
+        analyses = client.analyze_products("laptop", intent, products, eligibility_map=elig_map)
+        assert len(analyses) == 1
+
+        # Verify generate_content was called and prompt contains eligibility info
+        call_kwargs = mock_gen.call_args.kwargs
+        contents_arg = call_kwargs["contents"]
+        assert "deterministic_eligibility_status" in contents_arg
+        assert "UNVERIFIED_SPECS" in contents_arg
+        assert "unverified_specifications" in contents_arg
+
+        # Verify backward compatibility: calling without eligibility_map works
+        analyses_compat = client.analyze_products("laptop", intent, products)
+        assert len(analyses_compat) == 1
+
+
+def test_suitability_alignment_excluded_and_currency_mismatch():
+    """Verify validate_and_sanitize_intelligence aligns suitability for EXCLUDED and CURRENCY_MISMATCH."""
+    elig_excluded = ProductEligibilityItem(
+        product_id="p-ex",
+        product_name="Weak Laptop",
+        status="EXCLUDED",
+        is_qualified=False,
+        reasons=["Price exceeds maximum budget."],
+        verified_specs={},
+        unverified_specs=[],
+    )
+    elig_mismatch = ProductEligibilityItem(
+        product_id="p-curr",
+        product_name="USD Laptop",
+        status="CURRENCY_MISMATCH",
+        is_qualified=False,
+        reasons=["Priced in USD but user budget is INR."],
+        verified_specs={},
+        unverified_specs=[],
+    )
+    elig_qualified = ProductEligibilityItem(
+        product_id="p-qual",
+        product_name="Good Laptop",
+        status="QUALIFIED",
+        is_qualified=True,
+        reasons=["All requirements met."],
+        verified_specs={"ram": "16 GB"},
+        unverified_specs=[],
+    )
+
+    ai_items = [
+        ProductIntelligence(
+            product_id="p-ex",
+            product_name="Weak Laptop",
+            suitability="Recommended option for your needs",
+            strengths=["Nice screen"],
+            weaknesses=[],
+        ),
+        ProductIntelligence(
+            product_id="p-curr",
+            product_name="USD Laptop",
+            suitability="Fully Suitable within budget",
+            strengths=["Fast CPU"],
+            weaknesses=[],
+        ),
+        ProductIntelligence(
+            product_id="p-qual",
+            product_name="Good Laptop",
+            suitability="Highly Suitable",
+            strengths=["16 GB RAM", "Fast CPU"],
+            weaknesses=[],
+        ),
+    ]
+
+    elig_map = {"p-ex": elig_excluded, "p-curr": elig_mismatch, "p-qual": elig_qualified}
+    sanitized = AssistantService.validate_and_sanitize_intelligence(ai_items, elig_map)
+
+    assert "Excluded" in sanitized[0].suitability
+    assert "Currency Mismatch" in sanitized[1].suitability
+    assert sanitized[2].suitability == "Highly Suitable"

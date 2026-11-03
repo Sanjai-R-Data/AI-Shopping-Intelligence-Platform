@@ -15,7 +15,7 @@ import {
   clearCompareList,
 } from "./config.js";
 
-import { api, APIError } from "./api.js";
+import { api, APIError } from "./api.js?v=1.1";
 
 import {
   renderProductCard,
@@ -28,6 +28,11 @@ import {
   getSafeImageUrl,
   IMG_FALLBACK_ATTR,
   escapeHtml,
+  renderAssistantWelcome,
+  renderAssistantUserMessage,
+  renderAssistantMessage,
+  renderAssistantLoading,
+  renderAssistantError,
 } from "./components.js";
 
 // Global In-Memory State
@@ -47,6 +52,8 @@ const state = {
   },
   exploreTotalPages: 1,
   selectedProductForModal: null,
+  assistantConversation: [],
+  assistantIsLoading: false,
 };
 
 /**
@@ -69,7 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
  */
 function handleRouteChange() {
   const hash = window.location.hash.replace("#", "") || "home";
-  const validRoutes = ["home", "explore", "compare", "mandate", "orders"];
+  const validRoutes = ["home", "assistant", "explore", "compare", "mandate", "orders"];
   const route = validRoutes.includes(hash) ? hash : "home";
 
   state.currentRoute = route;
@@ -100,6 +107,9 @@ function handleRouteChange() {
   switch (route) {
     case "home":
       loadHomeSection();
+      break;
+    case "assistant":
+      loadAssistantSection();
       break;
     case "explore":
       loadExploreSection();
@@ -347,6 +357,172 @@ async function fetchHomeFeaturedProducts() {
 }
 
 // -------------------------------------------------------------------------
+// SECTION: AI SHOPPING ASSISTANT
+// -------------------------------------------------------------------------
+
+let assistantInitialized = false;
+
+function loadAssistantSection() {
+  const container = document.getElementById("assistant-messages-container");
+  const input = document.getElementById("assistant-query-input");
+  const sendBtn = document.getElementById("assistant-send-btn");
+  const clearBtn = document.getElementById("assistant-clear-btn");
+
+  if (!container) return;
+
+  // Render initial welcome if conversation is empty
+  if (state.assistantConversation.length === 0) {
+    container.innerHTML = renderAssistantWelcome();
+    bindAssistantPromptChips();
+  }
+
+  // Initialize event listeners once
+  if (!assistantInitialized) {
+    assistantInitialized = true;
+
+    // Send button click
+    if (sendBtn && input) {
+      sendBtn.addEventListener("click", () => {
+        const query = input.value.trim();
+        if (query) sendAssistantQuery(query);
+      });
+    }
+
+    // Enter to send (Shift+Enter for new line)
+    if (input) {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          const query = input.value.trim();
+          if (query) sendAssistantQuery(query);
+        }
+      });
+    }
+
+    // Clear chat button
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        if (state.assistantConversation.length === 0) return;
+        state.assistantConversation = [];
+        container.innerHTML = renderAssistantWelcome();
+        bindAssistantPromptChips();
+        if (input) input.value = "";
+        showToast("Assistant conversation cleared.", "info");
+      });
+    }
+  }
+
+  // Focus input
+  if (input) {
+    setTimeout(() => input.focus(), 100);
+  }
+}
+
+function bindAssistantPromptChips() {
+  const container = document.getElementById("assistant-messages-container");
+  if (!container) return;
+
+  container.querySelectorAll(".js-assistant-prompt-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const prompt = chip.getAttribute("data-prompt");
+      if (prompt) {
+        const input = document.getElementById("assistant-query-input");
+        if (input) input.value = prompt;
+        sendAssistantQuery(prompt);
+      }
+    });
+  });
+}
+
+async function sendAssistantQuery(queryText) {
+  const cleanQuery = (queryText || "").trim();
+  if (!cleanQuery) return;
+
+  if (state.assistantIsLoading) return; // Prevent duplicate submission
+
+  const container = document.getElementById("assistant-messages-container");
+  const input = document.getElementById("assistant-query-input");
+  const sendBtn = document.getElementById("assistant-send-btn");
+  if (!container) return;
+
+  // Clear welcome screen on first interaction
+  const welcomeScreen = document.getElementById("assistant-welcome-screen");
+  if (welcomeScreen) {
+    container.innerHTML = "";
+  }
+
+  // Append user message
+  state.assistantConversation.push({ role: "user", content: cleanQuery });
+  const userMsgDiv = document.createElement("div");
+  userMsgDiv.innerHTML = renderAssistantUserMessage(cleanQuery);
+  container.appendChild(userMsgDiv);
+
+  // Clear input & disable controls
+  if (input) input.value = "";
+  state.assistantIsLoading = true;
+  if (sendBtn) sendBtn.disabled = true;
+  if (input) input.disabled = true;
+
+  // Append loading indicator
+  const loadingDiv = document.createElement("div");
+  loadingDiv.id = "assistant-loading-wrapper";
+  loadingDiv.innerHTML = renderAssistantLoading();
+  container.appendChild(loadingDiv);
+  container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+
+  try {
+    // Extract bounded recent context (last 6 dialogue messages)
+    const context = state.assistantConversation
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-6)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    const res = await api.queryAssistant(cleanQuery, context);
+
+    // Remove loading indicator
+    document.getElementById("assistant-loading-wrapper")?.remove();
+
+    // Append assistant response
+    state.assistantConversation.push({
+      role: "assistant",
+      content: res.assistant_message || "",
+      data: res,
+    });
+
+    const assistantMsgDiv = document.createElement("div");
+    assistantMsgDiv.innerHTML = renderAssistantMessage(res, getCompareList(), state.activeMandate);
+    container.appendChild(assistantMsgDiv);
+
+    // Bind "+ Compare" and "View Offers" card handlers on the newly appended response
+    bindProductCardEvents(assistantMsgDiv);
+
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  } catch (err) {
+    document.getElementById("assistant-loading-wrapper")?.remove();
+
+    const errorDiv = document.createElement("div");
+    errorDiv.innerHTML = renderAssistantError(err.message, cleanQuery);
+    container.appendChild(errorDiv);
+
+    // Bind retry button
+    errorDiv.querySelector(".js-btn-retry-assistant")?.addEventListener("click", (e) => {
+      const retryQuery = e.currentTarget.getAttribute("data-query");
+      errorDiv.remove();
+      if (retryQuery) sendAssistantQuery(retryQuery);
+    });
+
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  } finally {
+    state.assistantIsLoading = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (input) {
+      input.disabled = false;
+      input.focus();
+    }
+  }
+}
+
+// -------------------------------------------------------------------------
 // SECTION: EXPLORE
 // -------------------------------------------------------------------------
 
@@ -481,12 +657,21 @@ async function fetchExploreProducts() {
   if (countLabel) countLabel.textContent = "Loading catalog...";
 
   try {
-    const res = await api.getProducts(state.exploreFilters);
+    const filters = state.exploreFilters;
+
+    const res = filters.q && filters.q.trim()
+      ? await api.searchLiveProducts(filters.q.trim(), 10)
+     : await api.getProducts(filters);
+    
     state.exploreProducts = res.items || [];
     state.exploreTotalPages = res.total_pages || 1;
 
+    const isLive = Boolean(filters.q && filters.q.trim());
+
     if (countLabel) {
-      countLabel.textContent = `Showing ${res.items.length} of ${res.total} catalog products (Page ${res.page} of ${res.total_pages})`;
+      countLabel.textContent = isLive
+        ? `Showing ${res.items.length} live results via Channel3 for "${filters.q.trim()}"`
+        : `Showing ${res.items.length} of ${res.total} catalog products (Page ${res.page} of ${res.total_pages})`;
     }
 
     renderExploreGrid();
@@ -723,10 +908,22 @@ function renderComparisonMatrix(container, data) {
   const matrix = data.comparison_matrix || {};
   const specRows = Object.entries(matrix).map(([specKey, valMap]) => `
     <tr class="border-b border-slate-800/60 hover:bg-slate-800/30">
-      <td class="py-3 px-4 text-xs font-semibold text-slate-400 capitalize bg-slate-950/40 w-48">${specKey.replace(/_/g, " ")}</td>
+      <td class="py-3 px-4 text-xs font-semibold text-slate-400 capitalize bg-slate-950/40 w-48">${specKey.replace(/[-_]/g, " ")}</td>
       ${products.map((p) => {
-        const val = valMap[p.id];
-        const displayVal = val !== undefined && val !== null ? String(val) : "Not Specified";
+        let val = valMap?.[p.id];
+        if (val === undefined || val === null || val === "Not Specified") {
+          const nameVal = valMap?.[p.name];
+          if (nameVal !== undefined && nameVal !== null && nameVal !== "Not Specified") {
+            val = nameVal;
+          }
+        }
+        if (val === undefined || val === null || val === "Not Specified") {
+          const specVal = p.specifications?.[specKey];
+          if (specVal !== undefined && specVal !== null) {
+            val = specVal;
+          }
+        }
+        const displayVal = val !== undefined && val !== null && String(val).trim() !== "" ? String(val) : "Not Specified";
         const isMuted = displayVal === "Not Specified";
         return `<td class="py-3 px-4 text-xs ${isMuted ? 'text-slate-500 italic' : 'text-slate-200 font-medium'} border-l border-slate-800">${displayVal}</td>`;
       }).join("")}

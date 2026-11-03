@@ -432,3 +432,513 @@ export function escapeHtml(str) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+/**
+ * Lightweight inline markdown formatter (bold, italic, inline code).
+ * Text MUST be HTML-escaped before passing into this function.
+ */
+function formatInlineMarkdown(text) {
+  if (!text) return "";
+  return text
+    .replace(/`([^`\n]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px] sm:text-xs border border-slate-700/60">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
+    .replace(/__(.+?)__/g, '<strong class="font-semibold text-white">$1</strong>')
+    .replace(/\*([^\*\n]+)\*/g, '<em class="italic text-slate-200">$1</em>')
+    .replace(/(?:^|\s)_([^_]+)_(?=\s|$|[.,!?:;])/g, (match, p1) => {
+      const leadingSpace = match.startsWith(" ") ? " " : "";
+      return `${leadingSpace}<em class="italic text-slate-200">${p1}</em>`;
+    });
+}
+
+/**
+ * Lightweight, safe Markdown renderer for assistant messages.
+ * Escapes HTML first to strictly prevent arbitrary script/HTML execution,
+ * then formats headings (###, ##, #), lists (ordered, unordered),
+ * horizontal rules (---), bold, italic, and inline code.
+ */
+export function renderMarkdown(raw) {
+  if (!raw) return "";
+  const lines = String(raw).split(/\r?\n/);
+  const out = [];
+  let inList = null; // "ul" or "ol"
+
+  function closeList() {
+    if (inList) {
+      out.push(inList === "ul" ? "</ul>" : "</ol>");
+      inList = null;
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    if (!trimmed) {
+      closeList();
+      continue;
+    }
+
+    // Horizontal rule: ---, ***, ___
+    if (/^(?:---|\*\*\*|___)\s*$/.test(trimmed)) {
+      closeList();
+      out.push('<hr class="my-3 border-slate-700/80" />');
+      continue;
+    }
+
+    // Headings: ###, ##, #
+    const h3Match = trimmed.match(/^###\s+(.+)$/);
+    if (h3Match) {
+      closeList();
+      const escaped = escapeHtml(h3Match[1]);
+      out.push(`<h4 class="text-sm font-bold text-white mt-3 mb-1.5">${formatInlineMarkdown(escaped)}</h4>`);
+      continue;
+    }
+
+    const h2Match = trimmed.match(/^##\s+(.+)$/);
+    if (h2Match) {
+      closeList();
+      const escaped = escapeHtml(h2Match[1]);
+      out.push(`<h3 class="text-base font-bold text-white mt-4 mb-2">${formatInlineMarkdown(escaped)}</h3>`);
+      continue;
+    }
+
+    const h1Match = trimmed.match(/^#\s+(.+)$/);
+    if (h1Match) {
+      closeList();
+      const escaped = escapeHtml(h1Match[1]);
+      out.push(`<h2 class="text-lg font-bold text-white mt-4 mb-2">${formatInlineMarkdown(escaped)}</h2>`);
+      continue;
+    }
+
+    // Unordered list item: - item, * item, ? item (\u2022)
+    const ulMatch = trimmed.match(/^[-*?\u2022]\s+(.+)$/);
+    if (ulMatch) {
+      if (inList !== "ul") {
+        closeList();
+        out.push('<ul class="list-disc list-inside space-y-1 my-2 pl-1 text-slate-300">');
+        inList = "ul";
+      }
+      const escaped = escapeHtml(ulMatch[1]);
+      out.push(`<li class="leading-relaxed">${formatInlineMarkdown(escaped)}</li>`);
+      continue;
+    }
+
+    // Ordered list item: 1. item, 2. item
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (olMatch) {
+      if (inList !== "ol") {
+        closeList();
+        out.push('<ol class="list-decimal list-inside space-y-1 my-2 pl-1 text-slate-300">');
+        inList = "ol";
+      }
+      const escaped = escapeHtml(olMatch[1]);
+      out.push(`<li class="leading-relaxed">${formatInlineMarkdown(escaped)}</li>`);
+      continue;
+    }
+
+    // Normal paragraph
+    closeList();
+    const escaped = escapeHtml(trimmed);
+    out.push(`<p class="mb-2 last:mb-0">${formatInlineMarkdown(escaped)}</p>`);
+  }
+
+  closeList();
+  return out.join("");
+}
+
+
+/**
+ * =========================================================================
+ * AI SHOPPING ASSISTANT UI COMPONENTS
+ * =========================================================================
+ */
+
+/**
+ * Welcome screen rendered when the assistant conversation is empty.
+ */
+export function renderAssistantWelcome() {
+  const examplePrompts = [
+    "Find a laptop for coding with at least 16GB RAM under $1500",
+    "Recommend wireless noise-cancelling headphones for travel under $250",
+    "Find Nike running shoes for training under $120",
+    "Finde Laufschuhe unter 150 Dollar",
+  ];
+
+  return `
+    <div id="assistant-welcome-screen" class="py-6 sm:py-10 flex flex-col items-center text-center max-w-2xl mx-auto space-y-6">
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-burnt-orange to-amber-600 flex items-center justify-center shadow-xl shadow-burnt-orange/20">
+        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+
+      <div class="space-y-2">
+        <h2 class="text-xl sm:text-2xl font-heading font-extrabold text-white">How can I assist your shopping today?</h2>
+        <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+          I extract your criteria, aggregate live offers across retailers via Channel3, assess technical trade-offs with Gemini 3.6 Flash, and verify your spending mandate.
+        </p>
+      </div>
+
+      <!-- Quick Suggestion Prompt Chips -->
+      <div class="w-full space-y-2 pt-2">
+        <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Try one of these queries:</span>
+        <div class="flex flex-wrap justify-center gap-2">
+          ${examplePrompts
+            .map(
+              (prompt) => `
+            <button
+              type="button"
+              class="js-assistant-prompt-chip text-left px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-burnt-orange/60 text-xs text-slate-300 hover:text-white transition-all duration-200"
+              data-prompt="${escapeHtml(prompt)}"
+            >
+              💬 ${escapeHtml(prompt)}
+            </button>
+          `
+            )
+            .join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * User speech bubble.
+ */
+export function renderAssistantUserMessage(content) {
+  return `
+    <div class="flex justify-end items-start gap-3">
+      <div class="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-tr-none px-4 py-3 bg-burnt-orange text-white text-xs sm:text-sm leading-relaxed shadow-lg">
+        <p class="whitespace-pre-wrap">${escapeHtml(content)}</p>
+      </div>
+      <div class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-[11px] font-bold text-slate-300">
+        You
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Assistant speech bubble with conversational guidance, notices, and recommended products.
+ */
+export function renderAssistantMessage(data, isComparedList = [], activeMandate = null) {
+  const isDegraded = Boolean(data.is_ai_degraded);
+  const degradedReason = data.degraded_reason || "";
+  const mandateEval = data.mandate_evaluation || null;
+  const products = data.products || [];
+  const eligibilityList = data.eligibility_details || [];
+  const intelligenceList = data.ai_analyses || [];
+
+  // Build maps for fast O(1) lookup
+  const eligibilityMap = {};
+  for (const item of eligibilityList) {
+    if (item && item.product_id) eligibilityMap[item.product_id] = item;
+  }
+
+  const intelligenceMap = {};
+  for (const item of intelligenceList) {
+    if (item && item.product_id) intelligenceMap[item.product_id] = item;
+  }
+
+  // Format assistant message text with safe markdown rendering
+  const rawMessage = data.assistant_message || "Here are the top options matching your search.";
+  const formattedMessage = renderMarkdown(rawMessage);
+
+  return `
+    <div class="flex items-start gap-3">
+      <div class="w-8 h-8 rounded-full bg-burnt-orange/20 border border-burnt-orange/40 flex items-center justify-center shrink-0 text-burnt-orange text-xs font-bold shadow-md">
+        AI
+      </div>
+      <div class="flex-1 max-w-[95%] sm:max-w-[85%] rounded-2xl rounded-tl-none p-4 sm:p-5 bg-slate-900 border border-slate-800 text-xs sm:text-sm text-slate-200 space-y-4 shadow-xl">
+        <!-- AI Degradation / High Traffic Notice -->
+        ${
+          isDegraded
+            ? `
+          <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5 text-sm">⚠</span>
+            <div>
+              <span class="font-semibold block">High Demand Grounded Notice</span>
+              <span class="text-[11px] text-amber-200/90 leading-relaxed">
+                Live Gemini reasoning experienced high traffic. Switched to deterministic rule-based analysis and verified live Channel3 results.
+                ${degradedReason ? `(${escapeHtml(degradedReason)})` : ""}
+              </span>
+            </div>
+          </div>
+        `
+            : ""
+        }
+
+        <!-- Spending Mandate Policy Banner -->
+        ${
+          mandateEval
+            ? `
+          <div class="p-3 rounded-xl text-xs flex items-start gap-2 ${
+            mandateEval.decision === "ALLOWED"
+              ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300"
+              : "bg-rose-500/10 border border-rose-500/30 text-rose-300"
+          }">
+            <span class="mt-0.5">${mandateEval.decision === "ALLOWED" ? "✅" : "⚠️"}</span>
+            <div>
+              <span class="font-semibold block">Spending Mandate Evaluation: ${escapeHtml(mandateEval.decision)}</span>
+              <span class="text-[11px] opacity-90 leading-relaxed">
+                ${
+                  mandateEval.decision === "ALLOWED"
+                    ? "Purchase of top recommended item satisfies your active session spending ceilings."
+                    : escapeHtml((mandateEval.reasons || []).join(" ") || "Blocked by active mandate policy restrictions.")
+                }
+              </span>
+            </div>
+          </div>
+        `
+            : ""
+        }
+
+        <!-- Conversational Message Body -->
+        <div class="text-slate-300 leading-relaxed font-normal">
+          ${formattedMessage}
+        </div>
+
+        <!-- Recommended Product Cards Grid -->
+        ${
+          products.length > 0
+            ? `
+          <div class="pt-2 border-t border-slate-800/80">
+            <div class="mb-3 flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-burnt-orange">
+                Recommended Live Products (${products.length})
+              </span>
+              <span class="text-[11px] text-slate-500">Grounded &amp; Policy Evaluated</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${products
+                .map((product) =>
+                  renderAssistantProductCard(
+                    product,
+                    eligibilityMap[product.id] || null,
+                    intelligenceMap[product.id] || null,
+                    isComparedList.includes(product.id),
+                    activeMandate
+                  )
+                )
+                .join("")}
+            </div>
+          </div>
+        `
+            : ""
+        }
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Compact Product Recommendation Card tailored for the Assistant stream.
+ */
+export function renderAssistantProductCard(product, eligibility = null, intelligence = null, isCompared = false, activeMandate = null) {
+  const offerCurrency = (product.offers?.[0]?.currency || "USD").toUpperCase();
+  const lowestPrice = product.lowest_price !== null ? formatPrice(product.lowest_price, offerCurrency) : "Check Offers";
+  const bestRetailer = product.lowest_price_retailer || product.offers?.[0]?.retailer_name || "Catalog";
+  const offersCount = product.offers ? product.offers.length : 0;
+  const isSynthetic = product.is_synthetic !== false;
+
+  // Eligibility Status Pill
+  let eligibilityPill = "";
+  if (eligibility) {
+    if (eligibility.status === "QUALIFIED") {
+      eligibilityPill = `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ✓ Qualified
+        </span>
+      `;
+    } else if (eligibility.status === "CURRENCY_MISMATCH") {
+      eligibilityPill = `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30" title="Cross-currency comparison caution">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> ⚠ Currency Notice
+        </span>
+      `;
+    } else if (eligibility.status === "UNVERIFIED_SPECS") {
+      eligibilityPill = `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> ℹ Unverified Specs
+        </span>
+      `;
+    } else {
+      eligibilityPill = `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+          <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> ✕ Excluded
+        </span>
+      `;
+    }
+  }
+
+  // Eligibility Reasons
+  let reasonsHtml = "";
+  if (eligibility && eligibility.reasons && eligibility.reasons.length > 0) {
+    reasonsHtml = `
+      <ul class="space-y-0.5 my-2">
+        ${eligibility.reasons
+          .slice(0, 2)
+          .map(
+            (r) => `
+          <li class="text-[11px] text-slate-400 flex items-start gap-1 leading-snug">
+            <span class="text-slate-600 shrink-0">•</span>
+            <span>${escapeHtml(r)}</span>
+          </li>
+        `
+          )
+          .join("")}
+      </ul>
+    `;
+  }
+
+  // AI Intelligence highlights
+  let aiIntelHtml = "";
+  if (intelligence && (intelligence.suitability || (intelligence.strengths && intelligence.strengths.length > 0))) {
+    aiIntelHtml = `
+      <div class="mt-2.5 p-2 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-1">
+        ${
+          intelligence.suitability
+            ? `<p class="text-[11px] text-slate-300 leading-snug line-clamp-2"><strong class="text-burnt-orange font-semibold">Suitability:</strong> ${escapeHtml(
+                intelligence.suitability
+              )}</p>`
+            : ""
+        }
+        ${
+          intelligence.strengths && intelligence.strengths.length > 0
+            ? `
+          <div class="pt-0.5">
+            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Strengths:</span>
+            <ul class="space-y-0.5 mt-0.5">
+              ${intelligence.strengths
+                .slice(0, 2)
+                .map(
+                  (s) => `
+                <li class="text-[11px] text-slate-400 flex items-start gap-1 leading-snug">
+                  <span class="text-emerald-400 shrink-0">✓</span>
+                  <span>${escapeHtml(s)}</span>
+                </li>
+              `
+                )
+                .join("")}
+            </ul>
+          </div>
+        `
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  const compareBtnClass = isCompared
+    ? "bg-burnt-orange text-white border-burnt-orange shadow-sm"
+    : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white";
+
+  return `
+    <div class="flex flex-col bg-slate-950 border border-slate-800/90 rounded-xl overflow-hidden hover:border-slate-700 transition-all shadow-md" data-product-id="${product.id}">
+      <!-- Header row with Image and Info -->
+      <div class="p-3 flex gap-3 border-b border-slate-800/60">
+        <div class="w-16 h-16 bg-slate-900 rounded-lg p-1.5 flex items-center justify-center shrink-0 border border-slate-800/80 overflow-hidden">
+          <img
+            src="${getSafeImageUrl(product.image_url)}"
+            alt="${escapeHtml(product.name)}"
+            class="max-h-full max-w-full object-contain"
+            loading="lazy"
+            ${IMG_FALLBACK_ATTR}
+          />
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1.5 flex-wrap mb-0.5">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-burnt-orange">${escapeHtml(product.brand)}</span>
+            ${
+              isSynthetic
+                ? `<span class="px-1.5 py-0.2 rounded text-[9px] font-medium bg-indigo-500/10 text-indigo-400">Demo</span>`
+                : `<span class="px-1.5 py-0.2 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-400">Live</span>`
+            }
+            ${eligibilityPill}
+          </div>
+          <h4 class="text-xs font-bold text-white line-clamp-1 leading-snug" title="${escapeHtml(product.name)}">
+            ${escapeHtml(product.name)}
+          </h4>
+          <div class="mt-1 flex items-baseline gap-2">
+            <span class="text-sm font-extrabold text-white">${lowestPrice}</span>
+            <span class="text-[10px] text-slate-400">via ${escapeHtml(bestRetailer)} (${offersCount} ${offersCount === 1 ? "offer" : "offers"})</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card Body: Eligibility reasons and AI suitability -->
+      <div class="p-3 flex-1 flex flex-col justify-between">
+        <div>
+          ${reasonsHtml}
+          ${aiIntelHtml}
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-3 grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60">
+          <button
+            type="button"
+            class="js-btn-details w-full py-1.5 px-2 text-[11px] font-semibold rounded-lg bg-burnt-orange hover:bg-burnt-orange/90 text-white transition-colors text-center"
+            data-id="${product.id}"
+          >
+            View Offers
+          </button>
+          <button
+            type="button"
+            class="js-btn-compare w-full py-1.5 px-2 text-[11px] font-semibold rounded-lg border transition-colors text-center ${compareBtnClass}"
+            data-id="${product.id}"
+          >
+            ${isCompared ? "✓ Compared" : "+ Compare"}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Animated Loading Indicator for Assistant queries.
+ */
+export function renderAssistantLoading() {
+  return `
+    <div id="assistant-loading-indicator" class="flex items-start gap-3">
+      <div class="w-8 h-8 rounded-full bg-burnt-orange/20 border border-burnt-orange/40 flex items-center justify-center shrink-0 text-burnt-orange text-xs font-bold shadow-md">
+        AI
+      </div>
+      <div class="px-4 py-3 rounded-2xl rounded-tl-none bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center gap-3 shadow-xl">
+        <span class="flex gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-burnt-orange animate-bounce"></span>
+          <span class="w-2 h-2 rounded-full bg-burnt-orange animate-bounce [animation-delay:0.2s]"></span>
+          <span class="w-2 h-2 rounded-full bg-burnt-orange animate-bounce [animation-delay:0.4s]"></span>
+        </span>
+        <span class="font-medium">Extracting criteria &amp; retrieving live offers...</span>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Assistant Error Bubble with Retry option.
+ */
+export function renderAssistantError(errorMessage, retryQuery = "") {
+  return `
+    <div class="flex items-start gap-3">
+      <div class="w-8 h-8 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center shrink-0 text-rose-400 text-xs font-bold shadow-md">
+        !
+      </div>
+      <div class="px-4 py-3 rounded-2xl rounded-tl-none bg-rose-950/40 border border-rose-500/30 text-xs text-rose-300 space-y-2 shadow-xl max-w-[85%]">
+        <p class="font-medium">Failed to process assistant query: ${escapeHtml(errorMessage)}</p>
+        ${
+          retryQuery
+            ? `
+          <button
+            type="button"
+            class="js-btn-retry-assistant px-3 py-1.5 rounded-lg bg-rose-900/60 hover:bg-rose-900 border border-rose-700/60 text-xs font-semibold text-rose-200 transition-colors"
+            data-query="${escapeHtml(retryQuery)}"
+          >
+            ↻ Retry Query
+          </button>
+        `
+            : ""
+        }
+      </div>
+    </div>
+  `;
+}

@@ -7,7 +7,7 @@
 export const CONFIG = {
   APP_NAME: "BUYWISE AI",
   TAGLINE: "Discover smarter. Compare deeper. Spend responsibly.",
-  API_BASE: "", // Same-origin relative path
+  API_BASE: "http://127.0.0.1:8000", // Same-origin relative path
   DEFAULT_CURRENCY: "USD",
   MAX_COMPARE_ITEMS: 4,
   STORAGE_KEYS: {

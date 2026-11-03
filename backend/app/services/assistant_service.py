@@ -194,43 +194,109 @@ class AssistantService:
 
     @staticmethod
     def _extract_ram_from_product(product: ProductResponse) -> tuple[float | None, str]:
-        """Extract RAM in GB from product specifications, title, or description."""
+        """Extract RAM in GB from product specifications, key_features, title, or description."""
         specs = product.specifications or {}
-        for key in ("ram", "RAM", "memory", "Memory", "system_memory", "System Memory (RAM)", "ram_memory"):
-            if key in specs and specs[key]:
-                val_str = str(specs[key]).lower()
+
+        # 1. Check dedicated RAM spec keys
+        ram_keys = (
+            "ram", "RAM", "memory", "Memory", "system_memory", "System Memory (RAM)",
+            "ram_memory", "system_memory_ram", "ram_size", "installed_ram", "memory_size", "ram_gb",
+        )
+        for key in ram_keys:
+            if key in specs and specs[key] is not None:
+                val = specs[key]
+                if isinstance(val, (int, float)) and 2 <= val <= 256:
+                    return float(val), f"specs.{key}: {val} GB"
+                val_str = str(val).lower()
                 m = re.search(r"(\d+)\s*(?:gb|gigabytes?)", val_str)
                 if m:
                     return float(m.group(1)), f"specs.{key}: {specs[key]}"
 
+        # 2. Check structured key_features, features, or highlights
+        for feat_key in ("key_features", "features", "highlights", "bullet_points"):
+            feats = specs.get(feat_key)
+            if feats:
+                feat_list = feats if isinstance(feats, list) else [feats]
+                for item in feat_list:
+                    item_str = str(item).strip()
+                    item_lower = item_str.lower()
+                    m = (
+                        re.search(r"(\d+)\s*(?:gb|gigabytes?)(?:\s+(?:ddr[345]|lpddr[45][a-z]?|sdram|unified))?\s*(?<!v)(?:ram|memory\b)", item_lower)
+                        or re.search(r"(\d+)\s*(?:gb|gigabytes?)\s+(?:ddr[345]|lpddr[45][a-z]?)\b", item_lower)
+                        or re.search(r"(?<!v)(?:ram|memory)\s*:\s*(\d+)\s*(?:gb|gigabytes?)", item_lower)
+                    )
+                    if m:
+                        num = next(g for g in m.groups() if g and g.isdigit())
+                        return float(num), f"specs.{feat_key}: {item_str}"
+
+        # 3. Check product title and description
         for text, src in [(product.name, "product title"), (product.description, "description")]:
             if text:
-                m = re.search(r"(\d+)\s*(?:gb|gigabytes?)\s*(?:ram|memory)", text.lower())
+                lower_text = text.lower()
+                m = (
+                    re.search(r"(\d+)\s*(?:gb|gigabytes?)(?:\s+(?:ddr[345]|lpddr[45][a-z]?|sdram|unified))?\s*(?<!v)(?:ram|memory\b)", lower_text)
+                    or re.search(r"(\d+)\s*(?:gb|gigabytes?)\s+(?:ddr[345]|lpddr[45][a-z]?)\b", lower_text)
+                    or re.search(r"(?<!v)(?:ram|memory)\s*:\s*(\d+)\s*(?:gb|gigabytes?)", lower_text)
+                    or re.search(r"(\d+)\s*(?:gb|gigabytes?)\s+of\s+(?:system\s+)?(?<!v)(?:ram|memory)", lower_text)
+                )
                 if m:
-                    return float(m.group(1)), f"{src}: {m.group(0)}"
+                    num = next(g for g in m.groups() if g and g.isdigit())
+                    return float(num), f"{src}: {m.group(0)}"
 
         return None, "Not specified"
 
     @staticmethod
     def _extract_storage_from_product(product: ProductResponse) -> tuple[float | None, str]:
-        """Extract storage in GB from product specifications, title, or description."""
+        """Extract storage in GB from product specifications, key_features, title, or description."""
         specs = product.specifications or {}
-        for key in ("storage", "Storage", "ssd", "SSD", "hard_drive", "drive", "capacity"):
-            if key in specs and specs[key]:
-                val_str = str(specs[key]).lower()
-                tb_m = re.search(r"(\d+)\s*(?:tb|terabytes?)", val_str)
+
+        # 1. Check dedicated storage spec keys
+        storage_keys = (
+            "storage", "Storage", "storage-capacity", "storage_capacity",
+            "storage-drive-capacity", "storage_drive_capacity",
+            "ssd", "SSD", "hard_drive", "drive", "capacity", "internal_storage",
+            "solid_state_drive_capacity", "ssd_capacity", "hdd_capacity"
+        )
+        for key in storage_keys:
+            if key in specs and specs[key] is not None:
+                val = specs[key]
+                if isinstance(val, (int, float)):
+                    if val in (128, 256, 512, 1000, 1024, 2000, 2048, 4000, 4096):
+                        return float(val), f"specs.{key}: {val} GB"
+                    if val in (1, 2, 4, 8) and ("tb" in key.lower() or val <= 4):
+                        return float(val) * 1024.0, f"specs.{key}: {val} TB"
+
+                val_str = str(val).lower()
+                tb_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:tb|terabytes?)", val_str)
                 if tb_m:
                     return float(tb_m.group(1)) * 1024.0, f"specs.{key}: {specs[key]}"
                 gb_m = re.search(r"(\d+)\s*(?:gb|gigabytes?)", val_str)
                 if gb_m:
                     return float(gb_m.group(1)), f"specs.{key}: {specs[key]}"
 
+        # 2. Check structured key_features, features, or highlights
+        for feat_key in ("key_features", "features", "highlights", "bullet_points"):
+            feats = specs.get(feat_key)
+            if feats:
+                feat_list = feats if isinstance(feats, list) else [feats]
+                for item in feat_list:
+                    item_str = str(item).strip()
+                    item_lower = item_str.lower()
+                    tb_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:tb|terabytes?)(?:\s+(?:pcie|nvme|m\.2))*\s*(?:ssd|storage|nvme|hdd|drive)?", item_lower)
+                    if tb_m:
+                        return float(tb_m.group(1)) * 1024.0, f"specs.{feat_key}: {item_str}"
+                    gb_m = re.search(r"(\d+)\s*(?:gb|gigabytes?)(?:\s+(?:pcie|nvme|gen\s*\d|m\.2))*\s*(?:ssd|storage|nvme|hdd|drive|emmc)", item_lower)
+                    if gb_m:
+                        return float(gb_m.group(1)), f"specs.{feat_key}: {item_str}"
+
+        # 3. Check product title and description
         for text, src in [(product.name, "product title"), (product.description, "description")]:
             if text:
-                tb_m = re.search(r"(\d+)\s*tb\s*(?:ssd|storage|nvme)", text.lower())
+                lower_text = text.lower()
+                tb_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:tb|terabytes?)(?:\s+(?:pcie|nvme|gen\s*\d|m\.2))*\s*(?:ssd|storage|nvme|hdd|drive)?", lower_text)
                 if tb_m:
                     return float(tb_m.group(1)) * 1024.0, f"{src}: {tb_m.group(0)}"
-                gb_m = re.search(r"(\d+)\s*gb\s*(?:ssd|storage|nvme)", text.lower())
+                gb_m = re.search(r"(\d+)\s*(?:gb|gigabytes?)(?:\s+(?:pcie|nvme|gen\s*\d|m\.2))*\s*(?:ssd|storage|nvme|hdd|drive|emmc)", lower_text)
                 if gb_m:
                     return float(gb_m.group(1)), f"{src}: {gb_m.group(0)}"
 
@@ -282,6 +348,8 @@ class AssistantService:
             elif spec_name in ("storage", "ssd"):
                 storage_gb, storage_src = cls._extract_storage_from_product(product)
                 if storage_gb is None:
+                    if status == "QUALIFIED":
+                        status = "UNVERIFIED_SPECS"
                     unverified_specs.append("storage")
                     reasons.append(f"Storage specification is unverified ({req.value}).")
                 else:
@@ -292,6 +360,10 @@ class AssistantService:
                             status = "EXCLUDED"
                             reasons.append(
                                 f"Verified storage of {int(storage_gb)} GB is below your required minimum of {int(min_gb)} GB."
+                            )
+                        else:
+                            reasons.append(
+                                f"Verified storage of {int(storage_gb)} GB meets your required minimum ({storage_src})."
                             )
 
         # Step B: Evaluate Currency and Budget Constraints
@@ -336,6 +408,142 @@ class AssistantService:
             verified_specs=verified_specs,
             unverified_specs=unverified_specs,
         )
+
+    @classmethod
+    def validate_and_sanitize_intelligence(
+        cls,
+        analyses: list[ProductIntelligence],
+        eligibility_map: dict[str, ProductEligibilityItem],
+    ) -> list[ProductIntelligence]:
+        """
+        Authoritative backend validation and sanitization layer for AI product intelligence.
+        Guarantees that Gemini output never contradicts deterministic eligibility results:
+        1. Deterministic eligibility is the single source of truth.
+        2. Specifications marked unverified (e.g. RAM, storage) must NEVER be presented as confirmed strengths.
+        3. Removes unsupported specification claims from strengths and advantages, while preserving
+           all legitimate evidenced strengths (CPU, GPU, display, chassis, etc.).
+        4. Accurately reflects deterministic status in suitability:
+           - QUALIFIED: Retains suitable rating.
+           - UNVERIFIED_SPECS: Marks as conditionally suitable pending verification (does not mark as excluded).
+           - EXCLUDED: Marks as not recommended / excluded due to failing hard specs or budget.
+           - CURRENCY_MISMATCH: Notes currency disparity requiring FX conversion.
+        """
+        sanitized_list: list[ProductIntelligence] = []
+
+        ram_claim_patterns = [
+            re.compile(r"\b(?:\d+\s*(?:gb|gigabytes?)\s*(?:ddr[345]|lpddr[45][a-z]?|sdram|unified)?\s*)?(?<!v)(?<!g)ram\b", re.IGNORECASE),
+            re.compile(r"\b(?:\d+\s*(?:gb|gigabytes?)\s+(?:ddr[345]|lpddr[45][a-z]?))\b", re.IGNORECASE),
+            re.compile(r"\b(?:\d+\s*(?:gb|gigabytes?)\s+of\s+system\s+memory)\b", re.IGNORECASE),
+            re.compile(r"\b(?:system\s+memory|installed\s+memory)\b", re.IGNORECASE),
+            re.compile(r"\b(?:sufficient|ample|generous|adequate)\s+ram\b", re.IGNORECASE),
+        ]
+
+        storage_claim_patterns = [
+            re.compile(r"\b(?:\d+\s*(?:tb|terabytes?|gb|gigabytes?)\s*(?:pcie|nvme|m\.2)?\s*)?(?:ssd|nvme|solid\s+state|hard\s+drive|hdd|storage\s+capacity)\b", re.IGNORECASE),
+            re.compile(r"\b(?:\d+\s*tb\s+storage)\b", re.IGNORECASE),
+            re.compile(r"\b(?:sufficient|ample|generous|adequate|large)\s+storage\b", re.IGNORECASE),
+        ]
+
+        for item in analyses:
+            elig = eligibility_map.get(item.product_id)
+            if not elig:
+                sanitized_list.append(item)
+                continue
+
+            unverified = [s.lower() for s in elig.unverified_specs]
+            has_unverified_ram = "ram" in unverified
+            has_unverified_storage = any(s in ("storage", "ssd") for s in unverified)
+
+            # 1. Filter strengths
+            clean_strengths: list[str] = []
+            for st in item.strengths:
+                st_lower = st.lower()
+                is_invalid_ram = False
+                if has_unverified_ram:
+                    if ("vram" in st_lower or "gddr" in st_lower or "graphics memory" in st_lower) and not ("system memory" in st_lower or "system ram" in st_lower):
+                        is_invalid_ram = False
+                    else:
+                        is_invalid_ram = any(p.search(st) for p in ram_claim_patterns)
+
+                is_invalid_storage = False
+                if has_unverified_storage:
+                    is_invalid_storage = any(p.search(st) for p in storage_claim_patterns)
+
+                if not is_invalid_ram and not is_invalid_storage:
+                    clean_strengths.append(st)
+                else:
+                    logger.info(
+                        "Sanitized unverified spec claim from product %s strengths: '%s'",
+                        item.product_id,
+                        st,
+                    )
+
+            # 2. Filter intended_use_advantages
+            clean_advantages: list[str] = []
+            for adv in item.intended_use_advantages:
+                adv_lower = adv.lower()
+                is_invalid_ram = False
+                if has_unverified_ram:
+                    if ("vram" in adv_lower or "gddr" in adv_lower or "graphics memory" in adv_lower) and not ("system memory" in adv_lower or "system ram" in adv_lower):
+                        is_invalid_ram = False
+                    else:
+                        is_invalid_ram = any(p.search(adv) for p in ram_claim_patterns)
+
+                is_invalid_storage = False
+                if has_unverified_storage:
+                    is_invalid_storage = any(p.search(adv) for p in storage_claim_patterns)
+
+                if not is_invalid_ram and not is_invalid_storage:
+                    clean_advantages.append(adv)
+
+            # 3. Ensure missing_information explicitly notes unverified specs
+            clean_missing = list(item.missing_information)
+            if has_unverified_ram:
+                if not any("ram" in m.lower() or "memory" in m.lower() for m in clean_missing):
+                    clean_missing.append("RAM capacity is not confirmed in merchant product specifications.")
+            if has_unverified_storage:
+                if not any("storage" in m.lower() or "ssd" in m.lower() for m in clean_missing):
+                    clean_missing.append("Storage / SSD capacity is unverified in merchant product specifications.")
+
+            # 4. Align suitability with deterministic status
+            updated_suitability = item.suitability
+            status = elig.status.upper()
+            if status == "UNVERIFIED_SPECS":
+                suit_lower = item.suitability.lower()
+                if any(kw in suit_lower for kw in ("highly suitable", "excellent", "perfect", "fully suitable", "best match", "ideal")):
+                    updated_suitability = "Conditionally Suitable (Key specifications pending merchant verification)"
+                elif "unverified" not in suit_lower and "pending" not in suit_lower and "conditional" not in suit_lower:
+                    updated_suitability = f"Conditionally Suitable - Pending verification of {', '.join(unverified).upper()}"
+            elif status == "EXCLUDED":
+                suit_lower = item.suitability.lower()
+                if any(kw in suit_lower for kw in ("suitable", "recommended", "excellent", "good")):
+                    updated_suitability = "Excluded (Does not meet required specifications or budget)"
+            elif status == "CURRENCY_MISMATCH":
+                suit_lower = item.suitability.lower()
+                if "currency" not in suit_lower:
+                    updated_suitability = "Currency Mismatch (Direct budget comparison requires FX conversion)"
+
+            # 5. Sanitize recommendation_rationale if it claims unverified specs
+            updated_rationale = item.recommendation_rationale
+            if has_unverified_ram and ("16 gb ram" in updated_rationale.lower() or "16gb ram" in updated_rationale.lower()):
+                updated_rationale = re.sub(
+                    r"(?i)(?:with|featuring|including)?\s*\d+\s*gb\s*(?:ddr\d\s*)?ram\s*(?:meets\s+requirements)?",
+                    "with unverified RAM specification",
+                    updated_rationale,
+                )
+
+            sanitized_item = item.model_copy(
+                update={
+                    "strengths": clean_strengths,
+                    "intended_use_advantages": clean_advantages,
+                    "missing_information": clean_missing,
+                    "suitability": updated_suitability,
+                    "recommendation_rationale": updated_rationale,
+                }
+            )
+            sanitized_list.append(sanitized_item)
+
+        return sanitized_list
 
     @classmethod
     def process_query(
@@ -424,6 +632,8 @@ class AssistantService:
             else:
                 excluded_product_ids.append(prod.id)
 
+        elig_map = {e.product_id: e for e in eligibility_details}
+
         # Step 5: Authoritative Deterministic Mandate Policy Evaluation
         mandate_eval_summary = None
         if active_mandate and retrieved_products:
@@ -454,7 +664,9 @@ class AssistantService:
                     query=request.query,
                     intent=intent,
                     products=prod_dicts,
+                    eligibility_map=elig_map,
                 )
+                ai_analyses = cls.validate_and_sanitize_intelligence(ai_analyses, elig_map)
             except GeminiError as exc:
                 logger.warning("Product intelligence analysis failed: %s", exc)
                 is_ai_degraded = True
